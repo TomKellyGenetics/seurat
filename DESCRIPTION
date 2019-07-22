@@ -60,6 +60,7 @@ License: GPL-3 | file LICENSE
 LazyData: true
 Collate:
     'RcppExports.R'
+    'alignment.R'
     'generics.R'
     'clustering.R'
     'data.R'

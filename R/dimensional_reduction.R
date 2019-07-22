@@ -364,15 +364,25 @@ RunCCA.default <- function(
   return(list(ccv = cca.data, d = cca.svd$d))
 }
 
-#' @param assay1,assay2 Assays to pull from in the first and second objects, respectively
-#' @param features Set of genes to use in CCA. Default is the union of both
-#' the variable features sets present in both objects.
-#' @param renormalize Renormalize raw data after merging the objects. If FALSE,
-#' merge the data matrices also.
-#' @param rescale Rescale the datasets prior to CCA. If FALSE, uses existing data in the scale data slots.
-#' @param compute.gene.loadings Also compute the gene loadings. NOTE - this will
-#' scale every gene in the dataset which may impose a high memory cost.
-#' @param add.cell.id1,add.cell.id2 Add ...
+#' Perform Canonical Correlation Analysis
+#'
+#' Runs a canonical correlation analysis using a diagonal implementation of CCA.
+#' For details about stored CCA calculation parameters, see
+#' \code{PrintCCAParams}.
+#'
+#' @param object Seurat object (after running FilterCells, NormalizeData)
+#' @param object2 Optional second object. If object2 is passed, object1 will be
+#' considered as group1 and object2 as group2.
+#' @param group1 First set of cells (or IDs) for CCA
+#' @param group2 Second set of cells (or IDs) for CCA
+#' @param group.by Factor to group by (column vector stored in object@@meta.data), Defaults to "group".
+#' @param add.cell.id1,add.cell.id2 arguments to pass to MergeSeurat (if group.by not given)
+#' @param num.cc Number of canonical vectors to calculate
+#' @param genes.use Set of genes to use in CCA. Default is object@@var.genes. If
+#' two objects are given, the default is the union of both variable gene sets
+#' that are also present in both objects.
+#' @param scale.data Use the scaled data from the object (requires ScaleData to be run)
+#' @param rescale.groups Rescale each set of cells independently
 #' @param ... Extra parameters (passed onto MergeSeurat in case with two objects
 #' passed, passed onto ScaleData in case with single object and rescale.groups
 #' set to TRUE)
@@ -384,8 +394,9 @@ RunCCA.default <- function(
 RunCCA.Seurat <- function(
   object1,
   object2,
-  assay1 = NULL,
-  assay2 = NULL,
+  group1,
+  group2,
+  group.by = "group",
   num.cc = 20,
   features = NULL,
   renormalize = FALSE,
@@ -397,21 +408,101 @@ RunCCA.Seurat <- function(
   use.cpp = TRUE,
   ...
 ) {
-  assay1 <- assay1 %||% DefaultAssay(object = object1)
-  assay2 <- assay2 %||% DefaultAssay(object = object2)
-  if (assay1 != assay2) {
-    warning("Running CCA on different assays")
+  if (! missing(x = object2) && (! missing(x = group1) || ! missing(x = group2))) {
+    warning("Both object2 and group set. Continuing with objects defining the groups")
   }
-  if (is.null(x = features)) {
-    if (length(x = VariableFeatures(object = object1, assay = assay1)) == 0) {
-      stop(paste0("VariableFeatures not computed for the ", assay1, " assay in object1"))
+  if (! missing(x = object2)) {
+    if (missing(x = genes.use)) {
+      genes.use <- union(x = object@var.genes, y = object2@var.genes)
+      if (length(x = genes.use) == 0) {
+        stop("No variable genes present. Run MeanVarPlot and retry")
+      }
+    }
+    if (scale.data) {
+      possible.genes <- intersect(
+        x = rownames(x = object@scale.data),
+        y = rownames(x = object2@scale.data)
+      )
+      genes.use <- genes.use[genes.use %in% possible.genes]
+      data.use1 <- object@scale.data[genes.use, ]
+      data.use2 <- object2@scale.data[genes.use, ]
+    } else {
+      possible.genes <- intersect(
+        x = rownames(object@data),
+        y = rownames(object2@data)
+      )
+      genes.use <- genes.use[genes.use %in% possible.genes]
+      data.use1 <- object@data[genes.use, ]
+      data.use2 <- object2@data[genes.use, ]
+    }
+    if (length(x = genes.use) == 0) {
+      stop("0 valid genes in genes.use")
+    }
+  } else {
+    if (missing(x = group1)) {
+      stop("group1 not set")
+    }
+    if (missing(x = group2)) {
+      stop("group2 not set")
+    }
+    if (! missing(x = add.cell.id1) || ! missing(x = add.cell.id2)) {
+      print("passing cell ids to MergeSeurat")
+    } else{
+      print("performing grouping by metadata")
+      if (! missing(x = group.by)) {
+        if(.hasSlot(object, "meta.data")){
+          if(is.data.frame(object@meta.data) || is.matrix(object@meta.data)){
+          } else {
+            object@meta.data <- as.data.frame(object@meta.data)
+            warning(paste(deparse(substitute(object@meta.data)), "is not a data.frame"))
+          }
+        } else {
+          stop(paste("metadata", deparse(substitute(object@meta.data)), "was not found \n Please run AddMetaData or specify group1 and group2"))
+        }
+        if (! group.by %in% colnames(x = object@meta.data)) {
+          stop("invalid group.by parameter")
+        }
+      }
+    }
+    if (missing(x = genes.use)) {
+      genes.use <- object@var.genes
+      if (length(x = genes.use) == 0) {
+        stop("No variable genes present. Run FindVariableGenes and retry or set genes.use")
+      }
     }
     if (length(x = VariableFeatures(object = object2, assay = assay2)) == 0) {
       stop(paste0("VariableFeatures not computed for the ", assay2, " assay in object2"))
     }
-    features <- union(x = VariableFeatures(object = object1), y = VariableFeatures(object = object2))
-    if (length(x = features) == 0) {
-      stop("Zero features in the union of the VariableFeature sets ")
+    if (scale.data) {
+      if (rescale.groups) {
+        data.use1 <- ScaleData(
+          object = object,
+          data.use = object@data[genes.use, cells.1],
+          ...
+        )
+        data.use1 <- data.use1@scale.data
+        data.use2 <- ScaleData(
+          object = object,
+          data.use = object@data[genes.use, cells.2],
+          ...
+        )
+        data.use2 <- data.use2@scale.data
+      } else {
+        if(.hasSlot(object, "scale.data")){
+          if(is.data.frame(object@scale.data) || is.matrix(object@scale.data)){
+          } else {
+            object@scale.data <- as.data.frame(object@scale.data)
+            warning(paste(deparse(substitute(object@scale.data)), "is not a data.frame"))
+          }
+        } else {
+          stop(paste("scaled data", deparse(substitute(object@scale.data)), "was not found \n Please run ScaleData or use the raw data: \n set scale.data = FALSE"))
+        }
+        data.use1 <- object@scale.data[genes.use, cells.1]
+        data.use2 <- object@scale.data[genes.use, cells.2]
+      }
+    } else {
+      data.use1 <- object@data[genes.use, cells.1]
+      data.use2 <- object@data[genes.use, cells.2]
     }
   }
   nfeatures <- length(x = features)

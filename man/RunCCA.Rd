@@ -11,10 +11,11 @@ RunCCA(object1, object2, ...)
 \method{RunCCA}{default}(object1, object2, standardize = TRUE,
   num.cc = 20, verbose = FALSE, use.cpp = TRUE, ...)
 
-\method{RunCCA}{Seurat}(object1, object2, assay1 = NULL, assay2 = NULL,
-  num.cc = 20, features = NULL, renormalize = FALSE,
-  rescale = FALSE, compute.gene.loadings = TRUE, add.cell.id1 = NULL,
-  add.cell.id2 = NULL, verbose = TRUE, use.cpp = TRUE, ...)
+\method{RunCCA}{Seurat}(object1, object2, group1, group2,
+  group.by = "group", num.cc = 20, features = NULL,
+  renormalize = FALSE, rescale = FALSE, compute.gene.loadings = TRUE,
+  add.cell.id1 = NULL, add.cell.id2 = NULL, verbose = TRUE,
+  use.cpp = TRUE, ...)
 }
 \arguments{
 \item{object1}{First Seurat object}
@@ -34,25 +35,37 @@ and mean 0}
 
 \item{use.cpp}{...}
 
-\item{assay1, assay2}{Assays to pull from in the first and second objects, respectively}
+\item{group1}{First set of cells (or IDs) for CCA}
 
-\item{features}{Set of genes to use in CCA. Default is the union of both
-the variable features sets present in both objects.}
+\item{group2}{Second set of cells (or IDs) for CCA}
 
-\item{renormalize}{Renormalize raw data after merging the objects. If FALSE,
-merge the data matrices also.}
+\item{group.by}{Factor to group by (column vector stored in object@meta.data), Defaults to "group".}
 
-\item{rescale}{Rescale the datasets prior to CCA. If FALSE, uses existing data in the scale data slots.}
+\item{add.cell.id1, add.cell.id2}{arguments to pass to MergeSeurat (if group.by not given)}
 
-\item{compute.gene.loadings}{Also compute the gene loadings. NOTE - this will
-scale every gene in the dataset which may impose a high memory cost.}
+\item{object}{Seurat object (after running FilterCells, NormalizeData)}
 
-\item{add.cell.id1, add.cell.id2}{Add ...}
+\item{object2}{Optional second object. If object2 is passed, object1 will be
+considered as group1 and object2 as group2.}
+
+\item{num.cc}{Number of canonical vectors to calculate}
+
+\item{genes.use}{Set of genes to use in CCA. Default is object@var.genes. If
+two objects are given, the default is the union of both variable gene sets
+that are also present in both objects.}
+
+\item{scale.data}{Use the scaled data from the object (requires ScaleData to be run)}
+
+\item{rescale.groups}{Rescale each set of cells independently}
 }
 \value{
 Returns a combined Seurat object with the CCA results stored.
 }
 \description{
+Runs a canonical correlation analysis using a diagonal implementation of CCA.
+For details about stored CCA calculation parameters, see
+\code{PrintCCAParams}.
+
 Runs a canonical correlation analysis using a diagonal implementation of CCA.
 For details about stored CCA calculation parameters, see
 \code{PrintCCAParams}.

@@ -38,7 +38,7 @@ Imports:
     igraph,
     irlba,
     KernSmooth,
-    leiden (>= 0.3.1),
+    leiden (>= 0.3.2),
     lmtest,
     MASS,
     Matrix (>= 1.2-14),
